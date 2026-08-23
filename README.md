@@ -5,6 +5,12 @@
 
 Version: 3.0.23 | [Changelog](CHANGELOG.md) | [Issues](https://github.com/bigbluebutton/docker/issues) | [Upgrading](docs/upgrading.md) | [Development](docs/development.md)
 
+> **This is a fork of [bigbluebutton/docker](https://github.com/bigbluebutton/docker)**
+> with support for deploying as a **Coolify-managed Docker Compose resource**.
+> See [docs/COOLIFY.md](docs/COOLIFY.md) for the Coolify deployment guide.
+> Upstream stays available as the `upstream` git remote so future upstream
+> changes can be merged and regenerated via `./scripts/generate-compose-coolify`.
+
 ## Features
 - Easy installation
 - Greenlight included
