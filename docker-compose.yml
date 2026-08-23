@@ -1,0 +1,369 @@
+services:
+  bbb-web:
+    image: alangecker/bbb-docker-web:v3.0.23
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - etherpad
+      - bbb-pads
+      - collabora
+    healthcheck:
+      test: wget --no-proxy --no-verbose --tries=1 --spider http://10.7.7.2:8090/bigbluebutton/api
+        || exit 1
+      start_period: 2m
+    environment:
+      IGNORE_TLS_CERT_ERRORS: false
+      DOMAIN: ${DOMAIN}
+      ENABLE_RECORDING: ${ENABLE_RECORDING:-false}
+      SHARED_SECRET: ${SHARED_SECRET}
+      WELCOME_MESSAGE: ${WELCOME_MESSAGE:-}
+      WELCOME_FOOTER: ${WELCOME_FOOTER}
+      STUN_SERVER: stun:${STUN_IP}:${STUN_PORT}
+      ENABLE_HTTPS_PROXY: ${ENABLE_HTTPS_PROXY:-false}
+      TURN_SECRET: ${TURN_SECRET:-}
+      TURN_EXT_SERVER: ${TURN_EXT_SERVER:-}
+      TURN_EXT_SECRET: ${TURN_EXT_SECRET:-}
+      ENABLE_LEARNING_DASHBOARD: ${ENABLE_LEARNING_DASHBOARD:-true}
+      COLLABORA_URL: ${COLLABORA_URL:-https://collabora:9980/cool}
+    volumes:
+      - ./data/bigbluebutton:/var/bigbluebutton
+      - ./data/freeswitch-meetings:/var/freeswitch/meetings
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.2
+  freeswitch:
+    container_name: bbb-freeswitch
+    image: alangecker/bbb-docker-freeswitch:v1.10.12-v3.0.23
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+      - NET_ADMIN
+      - NET_RAW
+      - NET_BROADCAST
+      - SYS_NICE
+      - SYS_RESOURCE
+    environment:
+      DOMAIN: ${DOMAIN}
+      EXTERNAL_IPv4: ${EXTERNAL_IPv4}
+      EXTERNAL_IPv6: ${EXTERNAL_IPv6:-::1}
+      SIP_IP_ALLOWLIST: ${SIP_IP_ALLOWLIST:-}
+      DISABLE_SOUND_MUTED: ${DISABLE_SOUND_MUTED:-false}
+      DISABLE_SOUND_ALONE: ${DISABLE_SOUND_ALONE:-false}
+      SOUNDS_LANGUAGE: ${SOUNDS_LANGUAGE:-en-us-callie}
+      ESL_PASSWORD: ${FSESL_PASSWORD:-ClueCon}
+    volumes:
+      - ./conf/sip_profiles:/etc/freeswitch/sip_profiles/external-dialin
+      - ./data/freeswitch-meetings:/var/freeswitch/meetings
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.10
+    logging:
+      driver: local
+      options:
+        max-size: 10k
+        max-file: '1'
+        compress: 'false'
+  nginx:
+    image: alangecker/bbb-docker-nginx:v3.0.23-v5.4.4-1.29
+    restart: unless-stopped
+    volumes:
+      - ./data/bigbluebutton:/var/bigbluebutton
+      - ${DEFAULT_PRESENTATION:-/dev/null}:/www/default.pdf
+    ports:
+      - 127.0.0.1:48082:48082
+      - 127.0.0.1:48081:48081
+      - 127.0.0.1:48087:48087
+      - 10.7.7.1:48082:48082
+      - 10.7.7.1:48081:48081
+      - 10.7.7.1:48087:48087
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.34
+    tmpfs:
+      - /tmp
+    extra_hosts:
+      - host.docker.internal:10.7.7.1
+      - bbb-web:10.7.7.2
+      - etherpad:10.7.7.4
+      - webrtc-sfu:10.7.7.11
+      - greenlight:10.7.7.21
+      - bbb-graphql-server:10.7.7.31
+      - bbb-graphql-middleware:10.7.7.32
+  etherpad:
+    image: alangecker/bbb-docker-etherpad:2.4.2-s8328b77-p88f3f6b
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - collabora
+    environment:
+      ETHERPAD_API_KEY: ${ETHERPAD_API_KEY}
+      COLLABORA_URL: ${COLLABORA_URL:-https://collabora:9980/cool}
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.4
+  bbb-pads:
+    image: alangecker/bbb-docker-pads:v1.5.8
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - etherpad
+    environment:
+      ETHERPAD_API_KEY: ${ETHERPAD_API_KEY}
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.18
+  bbb-export-annotations:
+    image: alangecker/bbb-docker-bbb-export-annotations:v3.0.23
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - etherpad
+      - bbb-pads
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.19
+    volumes:
+      - ./data/bigbluebutton:/var/bigbluebutton
+    tmpfs:
+      - /tmp
+  redis:
+    image: redis:8.4-alpine
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.5
+    volumes:
+      - ./data/redis:/data
+  webrtc-sfu:
+    image: alangecker/bbb-docker-webrtc-sfu:v2.22.0
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - freeswitch
+    environment:
+      ESL_PASSWORD: ${FSESL_PASSWORD:-ClueCon}
+      MS_WEBRTC_LISTEN_IPS: '[{"ip":"0.0.0.0", "announcedIp":"${EXTERNAL_IPv4}"}]'
+      MS_RTC_MIN: ${RTP_PORT_RANGE_START:-24577}
+      MS_RTC_MAX: ${RTP_PORT_RANGE_END:-25000}
+      CLIENT_HOST: 10.7.7.11
+      MCS_HOST: 10.7.7.11
+      MCS_ADDRESS: 10.7.7.11
+      MS_RTP_LISTEN_IP: '{"ip":"0.0.0.0", "announcedIp":"10.7.7.11"}'
+    volumes:
+      - ./data/mediasoup:/var/mediasoup
+    tmpfs:
+      - /var/log/bbb-webrtc-sfu
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.11
+    ports:
+      - ${RTP_PORT_RANGE_START:-24577}-${RTP_PORT_RANGE_END:-25000}:${RTP_PORT_RANGE_START:-24577}-${RTP_PORT_RANGE_END:-25000}/udp
+    extra_hosts:
+      - freeswitch:10.7.7.10
+      - redis:10.7.7.5
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      memlock: -1
+  fsesl-akka:
+    image: alangecker/bbb-docker-fsesl-akka:v3.0.23
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - freeswitch
+    environment:
+      FSESL_PASSWORD: ${FSESL_PASSWORD:-ClueCon}
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.14
+  apps-akka:
+    image: alangecker/bbb-docker-apps-akka:v3.0.23
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      DOMAIN: ${DOMAIN}
+      SHARED_SECRET: ${SHARED_SECRET}
+      POSTGRES_PASSWORD: ${POSTGRESQL_SECRET:-password}
+    volumes:
+      - ./data/freeswitch-meetings:/var/freeswitch/meetings
+      - ./conf/bbb-html5.yml:/etc/bigbluebutton/bbb-html5.yml:ro
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.15
+  bbb-graphql-server:
+    image: alangecker/bbb-docker-graphql-server:v3.0.23
+    depends_on:
+      - postgres
+      - bbb-web
+      - apps-akka
+      - bbb-graphql-actions
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRESQL_SECRET:-password}
+      HASURA_GRAPHQL_ADMIN_SECRET: TODO_CHANGE_ME
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8085/healthz
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.31
+  bbb-graphql-actions:
+    image: alangecker/bbb-docker-graphql-actions:v3.0.23
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - apps-akka
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.30
+  bbb-graphql-middleware:
+    image: alangecker/bbb-docker-graphql-middleware:v3.0.23
+    restart: unless-stopped
+    depends_on:
+      - bbb-graphql-server
+      - bbb-graphql-actions
+      - bbb-web
+      - redis
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.32
+  collabora:
+    image: collabora/code:latest
+    restart: unless-stopped
+    tmpfs:
+      - /tmp
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.20
+    logging:
+      driver: none
+  periodic:
+    image: alangecker/bbb-docker-periodic:v3.0.0
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/bigbluebutton:/var/bigbluebutton
+      - ./data/mediasoup:/var/mediasoup
+    tmpfs:
+      - /var/log/bigbluebutton
+    environment:
+      ENABLE_RECORDING: ${ENABLE_RECORDING}
+      REMOVE_OLD_RECORDING: ${REMOVE_OLD_RECORDING}
+      RECORDING_MAX_AGE_DAYS: ${RECORDING_MAX_AGE_DAYS}
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.12
+  recordings:
+    image: alangecker/bbb-docker-recordings:v3.0.23
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - bbb-pads
+    environment:
+      DOMAIN: ${DOMAIN}
+      SHARED_SECRET: ${SHARED_SECRET}
+    volumes:
+      - ./data/bigbluebutton:/var/bigbluebutton
+      - ./data/freeswitch-meetings:/var/freeswitch/meetings
+      - ./data/mediasoup:/var/mediasoup
+      - ./data/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
+    tmpfs:
+      - /var/log/bigbluebutton
+      - /tmp
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.16
+  bbb-webrtc-recorder:
+    image: alangecker/bbb-docker-webrtc-recorder:v0.14.0
+    depends_on:
+      - redis
+    volumes:
+      - ./data/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.23
+    extra_hosts:
+      - redis:10.7.7.5
+  coturn:
+    image: coturn/coturn:4.9.0-alpine
+    restart: unless-stopped
+    command:
+      - --external-ip=${EXTERNAL_IPv4}/10.7.7.13
+      - --static-auth-secret=${TURN_SECRET}
+      - --allowed-peer-ip=${EXTERNAL_IPv4}
+      - --relay-ip=10.7.7.13
+      - --min-port=${COTURN_PORT_RANGE_START:-32769}
+      - --max-port=${COTURN_PORT_RANGE_END:-33268}
+    volumes:
+      - ./mod/coturn/turnserver.conf:/etc/coturn/turnserver.conf
+      - ./data/coturn:/var/lib/coturn
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.13
+    ports:
+      - 3478:3478
+      - 3478:3478/udp
+      - ${COTURN_PORT_RANGE_START:-32769}-${COTURN_PORT_RANGE_END:-33268}:${COTURN_PORT_RANGE_START:-32769}-${COTURN_PORT_RANGE_END:-33268}/udp
+  greenlight:
+    image: bigbluebutton/greenlight:v3.8.0
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRESQL_SECRET:-password}@postgres:5432/greenlight
+      REDIS_URL: redis://redis:6379
+      BIGBLUEBUTTON_ENDPOINT: https://${DOMAIN}/bigbluebutton/api
+      BIGBLUEBUTTON_SECRET: ${SHARED_SECRET}
+      SECRET_KEY_BASE: ${RAILS_SECRET}
+      RELATIVE_URL_ROOT: /
+    volumes:
+      - ./data/greenlight:/usr/src/app/storage
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.21
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_MULTIPLE_DATABASES: bbb_graphql,hasura_app,greenlight
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRESQL_SECRET:-password}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./mod/postgres/initdb.sh:/docker-entrypoint-initdb.d/initdb.sh
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.22
+networks:
+  bbb-net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.7.7.0/24
