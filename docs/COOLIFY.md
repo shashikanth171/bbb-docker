@@ -84,6 +84,7 @@ resource. They map 1:1 to the `.env` keys the template uses.
 | Variable | Example | Notes |
 | --- | --- | --- |
 | `COOLIFY_MODE` | `true` | Must be `true` (no host networking) |
+| `BBB_DATA_DIR` | `/mnt/bbb-object-storage` | Data root for recordings + all volumes. Set to an S3-backed mount for object storage (default `./data`) |
 | `DOMAIN` | `bbb.example.org` | BBB FQDN, pointed at the server |
 | `EXTERNAL_IPv4` | `203.0.113.5` | Server's public IPv4 |
 | `RTP_PORT_RANGE_START` | `24577` | SFU media range (UDP) |
@@ -161,6 +162,50 @@ Useful checks if media fails:
 - `docker compose logs coturn` → look for relay allocation errors.
 - Browser `chrome://webrtc-internals` → inspect ICE candidates (expect the
   `EXTERNAL_IPv4` candidate over UDP, not just TURN-relayed).
+
+## Object storage for recordings
+
+Recordings are **not** stored via Greenlight's S3 settings — Greenlight's S3
+config (`S3_*` env vars) only covers presentation file uploads (ActiveStorage).
+Recorded playback is produced by the `recordings` container into
+`/var/bigbluebutton/published` and served by nginx at `/playback/...` URLs that
+Greenlight links to directly. So object storage must back the **data directory**.
+
+Set `BBB_DATA_DIR` to a host path that is an object-storage-backed FUSE mount
+(e.g. rclone or s3fs) of your S3/MinIO bucket. Every BBB data volume
+(`bigbluebutton`, `freeswitch-meetings`, `mediasoup`, `bbb-webrtc-recorder`)
+then lives on object storage:
+
+```
+# in Coolify env vars
+BBB_DATA_DIR=/mnt/bbb-object-storage
+```
+
+### Example: mount an S3 bucket with rclone on the Coolify host
+
+```bash
+# once: configure rclone (choose "s3", or minio with provider "Minio")
+rclone config
+
+# make a systemd unit or just test it:
+mkdir -p /mnt/bbb-object-storage
+rclone mount bbb:recordings /mnt/bbb-object-storage \
+    --vfs-cache-mode writes \
+    --daemon
+```
+
+Notes:
+- Use `--vfs-cache-mode writes` so the recording pipeline (resque workers,
+  ffmpeg, nginx serving) sees normal local write semantics.
+- Create the subdirectories before starting BBB
+  (`bigbluebutton`, `freeswitch-meetings`, `mediasoup`, `bbb-webrtc-recorder`)
+  so bind mounts resolve cleanly, and ensure write access for the container
+  UIDs (recording UID 998, etc.).
+- Existing local recordings: copy `./data/bigbluebutton` into the bucket first.
+- Restart the BBB resource after setting `BBB_DATA_DIR`.
+
+This keeps the upstream volume layout (`/var/bigbluebutton`, ...) unchanged, so
+no nginx or recording-pipeline config changes are needed.
 
 ## Known caveats
 

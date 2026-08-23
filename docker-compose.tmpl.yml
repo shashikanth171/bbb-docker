@@ -63,8 +63,8 @@ services:
       ENABLE_LEARNING_DASHBOARD: ${ENABLE_LEARNING_DASHBOARD:-true}
       COLLABORA_URL: ${COLLABORA_URL:-https://collabora:9980/cool}
     volumes:
-      - ./data/bigbluebutton:/var/bigbluebutton
-      - ./data/freeswitch-meetings:/var/freeswitch/meetings
+      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
+      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
     networks:
       bbb-net:
         ipv4_address: 10.7.7.2
@@ -104,7 +104,7 @@ services:
     {{ end }}
     volumes:
       - ./conf/sip_profiles:/etc/freeswitch/sip_profiles/external-dialin
-      - ./data/freeswitch-meetings:/var/freeswitch/meetings
+      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
     networks:
       bbb-net:
         ipv4_address: 10.7.7.10
@@ -129,7 +129,7 @@ services:
     image: alangecker/bbb-docker-nginx:{{ .Env.TAG_BBB }}-{{ .Env.TAG_PLAYBACK }}-1.29
     restart: unless-stopped
     volumes:
-      - ./data/bigbluebutton:/var/bigbluebutton
+      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
       - ${DEFAULT_PRESENTATION:-/dev/null}:/www/default.pdf
 
       {{ if isTrue .Env.DEV_MODE }}
@@ -222,7 +222,7 @@ services:
       bbb-net:
         ipv4_address: 10.7.7.19
     volumes:
-      - ./data/bigbluebutton:/var/bigbluebutton
+      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
     tmpfs:
       - /tmp
 
@@ -273,7 +273,7 @@ services:
       MS_WEBRTC_LISTEN_IPS: '[{"ip":"${EXTERNAL_IPv4}", "announcedIp":"${EXTERNAL_IPv4}"}]'
       {{ end }}
     volumes:
-      - ./data/mediasoup:/var/mediasoup
+      - ${BBB_DATA_DIR:-./data}/mediasoup:/var/mediasoup
     tmpfs:
       - /var/log/bbb-webrtc-sfu
     {{ if isTrue .Env.COOLIFY_MODE }}
@@ -336,7 +336,7 @@ services:
       SHARED_SECRET: ${SHARED_SECRET}
       POSTGRES_PASSWORD: ${POSTGRESQL_SECRET:-password}
     volumes:
-      - ./data/freeswitch-meetings:/var/freeswitch/meetings
+      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
       - ./conf/bbb-html5.yml:/etc/bigbluebutton/bbb-html5.yml:ro
     networks:
       bbb-net:
@@ -450,8 +450,8 @@ services:
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./data/bigbluebutton:/var/bigbluebutton
-      - ./data/mediasoup:/var/mediasoup
+      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
+      - ${BBB_DATA_DIR:-./data}/mediasoup:/var/mediasoup
     tmpfs:
       - /var/log/bigbluebutton
     environment:
@@ -483,10 +483,10 @@ services:
       DOMAIN: ${DOMAIN}
       SHARED_SECRET: ${SHARED_SECRET}
     volumes:
-      - ./data/bigbluebutton:/var/bigbluebutton
-      - ./data/freeswitch-meetings:/var/freeswitch/meetings
-      - ./data/mediasoup:/var/mediasoup
-      - ./data/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
+      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
+      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
+      - ${BBB_DATA_DIR:-./data}/mediasoup:/var/mediasoup
+      - ${BBB_DATA_DIR:-./data}/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
     tmpfs:
       - /var/log/bigbluebutton
       - /tmp
@@ -503,7 +503,7 @@ services:
     depends_on:
       - redis
     volumes: 
-      - ./data/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
+      - ${BBB_DATA_DIR:-./data}/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
     # WebRTC connection to bbb-webrtc-sfu seem to 
     # only to work via the external IP
     {{ if isTrue .Env.COOLIFY_MODE }}
@@ -661,7 +661,7 @@ services:
         ipv4_address: 10.7.7.33
     {{ if isTrue .Env.ENABLE_PROMETHEUS_EXPORTER_OPTIMIZATION }}
     volumes:
-      - ./data/bigbluebutton:/var/bigbluebutton:ro
+      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton:ro
     {{end}}
 
     # the exporter requires /etc/bigbluebutton/bigbluebutton-release
