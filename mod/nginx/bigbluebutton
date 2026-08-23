@@ -15,6 +15,12 @@ server {
   # This variable is used instead of $scheme by bigbluebutton nginx include
   # files, so $scheme can be overridden in reverse-proxy configurations.
   set $real_scheme $scheme;
+  # Honor X-Forwarded-Proto when a reverse proxy (e.g. Coolify's Traefik) already
+  # terminated TLS, so BBB generates https URLs/cookies even though it sees plain
+  # HTTP on 48087. No-op in the default host-networking setup.
+  if ($http_x_forwarded_proto) {
+    set $real_scheme $http_x_forwarded_proto;
+  }
 
   # opt-out of google's floc tracking
   # https://www.eff.org/deeplinks/2021/03/googles-floc-terrible-idea
