@@ -17,7 +17,14 @@ services:
     volumes:
       - ./repos/bigbluebutton/bigbluebutton-html5:/app/:rw
       - ./.cache/npm:/tmp/.npm:rw
+    {{ if isTrue .Env.COOLIFY_MODE }}
+    # Coolify: host networking is not allowed (conflicts with Coolify-injected networks)
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.24
+    {{ else }}
     network_mode: host
+    {{ end }}
   {{ end }}
 
   bbb-web:
@@ -149,7 +156,11 @@ services:
       - "host.docker.internal:10.7.7.1"
       - "bbb-web:10.7.7.2"
       - "etherpad:10.7.7.4"
+      {{ if isTrue .Env.COOLIFY_MODE }}
+      - "webrtc-sfu:10.7.7.11"
+      {{ else }}
       - "webrtc-sfu:10.7.7.1"
+      {{ end }}
       - "greenlight:10.7.7.21"
       - "bbb-graphql-server:10.7.7.31"
       - "bbb-graphql-middleware:10.7.7.32"
@@ -243,16 +254,43 @@ services:
       - freeswitch
     environment:
       ESL_PASSWORD: ${FSESL_PASSWORD:-ClueCon}
-      {{ if .Env.EXTERNAL_IPv6 }}
+      {{ if isTrue .Env.COOLIFY_MODE }}
+      # Coolify/bridge mode: mediasoup binds 0.0.0.0 inside the container and the
+      # RTP range is published to the host. announcedIp still advertises the server's
+      # public IPv4 so browsers reach the host-published ports. All the *host IP
+      # references from the baked production.yml (clientHost/mcs/plainRtp) are
+      # re-pointed at the SFU's own bbb-net IP (10.7.7.11).
+      MS_WEBRTC_LISTEN_IPS: '[{"ip":"0.0.0.0", "announcedIp":"${EXTERNAL_IPv4}"}]'
+      MS_RTC_MIN: ${RTP_PORT_RANGE_START:-24577}
+      MS_RTC_MAX: ${RTP_PORT_RANGE_END:-25000}
+      CLIENT_HOST: 10.7.7.11
+      MCS_HOST: 10.7.7.11
+      MCS_ADDRESS: 10.7.7.11
+      MS_RTP_LISTEN_IP: '{"ip":"0.0.0.0", "announcedIp":"10.7.7.11"}'
+      {{ else if .Env.EXTERNAL_IPv6 }}
       MS_WEBRTC_LISTEN_IPS: '[{"ip":"::", "announcedIp":"${EXTERNAL_IPv6}"}, {"ip":"${EXTERNAL_IPv4}", "announcedIp":"${EXTERNAL_IPv4}"}]'
-      {{else}}
+      {{ else }}
       MS_WEBRTC_LISTEN_IPS: '[{"ip":"${EXTERNAL_IPv4}", "announcedIp":"${EXTERNAL_IPv4}"}]'
-      {{end}}
+      {{ end }}
     volumes:
       - ./data/mediasoup:/var/mediasoup
     tmpfs:
       - /var/log/bbb-webrtc-sfu
+    {{ if isTrue .Env.COOLIFY_MODE }}
+    # Coolify: no host networking. SFU gets a static bbb-net IP, and the RTP UDP
+    # range (rtcMinPort-rtcMaxPort, controlled via MS_RTC_MIN/MS_RTC_MAX above) is
+    # published to the host so external WebRTC media can reach mediasoup.
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.11
+    ports:
+      - "${RTP_PORT_RANGE_START:-24577}-${RTP_PORT_RANGE_END:-25000}:${RTP_PORT_RANGE_START:-24577}-${RTP_PORT_RANGE_END:-25000}/udp"
+    extra_hosts:
+      - "freeswitch:10.7.7.10"
+      - "redis:10.7.7.5"
+    {{ else }}
     network_mode: host
+    {{ end }}
     security_opt:
       - seccomp:unconfined # allow io_uring access for mediasoup
     ulimits:
@@ -468,7 +506,15 @@ services:
       - ./data/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
     # WebRTC connection to bbb-webrtc-sfu seem to 
     # only to work via the external IP
+    {{ if isTrue .Env.COOLIFY_MODE }}
+    # Coolify: no host networking. The recorder is a WebRTC peer of the SFU; the
+    # SFU's announced external IP + published RTP range lets it connect.
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.23
+    {{ else }}
     network_mode: host
+    {{ end }}
     extra_hosts:
       - "redis:10.7.7.5"
 {{end}}
@@ -520,16 +566,38 @@ services:
     image: coturn/coturn:4.9.0-alpine
     restart: unless-stopped
     command:
+      {{ if isTrue .Env.COOLIFY_MODE }}
+      # Coolify/bridge mode: coturn binds inside the container on its bbb-net IP.
+      # --external-ip advertises the server's public IPv4 to TURN clients, and the
+      # relay UDP range is published to the host. 3478 (STUN/TURN) is published too.
+      - "--external-ip=${EXTERNAL_IPv4}/10.7.7.13"
+      - "--static-auth-secret=${TURN_SECRET}"
+      - "--allowed-peer-ip=${EXTERNAL_IPv4}"
+      - "--relay-ip=10.7.7.13"
+      - "--min-port=${COTURN_PORT_RANGE_START:-32769}"
+      - "--max-port=${COTURN_PORT_RANGE_END:-33268}"
+      {{ else }}
       - "--external-ip=${EXTERNAL_IPv4}/${EXTERNAL_IPv4}"
       - "--external-ip=${EXTERNAL_IPv6:-::1}/${EXTERNAL_IPv6:-::1}"
       - "--static-auth-secret=${TURN_SECRET}"
       - "--allowed-peer-ip=${EXTERNAL_IPv4}"
       - "--relay-ip=${EXTERNAL_IPv4}"
       - "--relay-ip=${EXTERNAL_IPv6:-::1}"
+      {{ end }}
     volumes:
       - ./mod/coturn/turnserver.conf:/etc/coturn/turnserver.conf
       - ./data/coturn:/var/lib/coturn
+    {{ if isTrue .Env.COOLIFY_MODE }}
+    networks:
+      bbb-net:
+        ipv4_address: 10.7.7.13
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "${COTURN_PORT_RANGE_START:-32769}-${COTURN_PORT_RANGE_END:-33268}:${COTURN_PORT_RANGE_START:-32769}-${COTURN_PORT_RANGE_END:-33268}/udp"
+    {{ else }}
     network_mode: host
+    {{ end }}
 {{end}}
 
 {{ if isTrue .Env.ENABLE_GREENLIGHT }}
