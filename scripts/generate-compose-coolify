@@ -1,0 +1,84 @@
+#!/bin/bash
+# Generate docker-compose.yml in Coolify-compatible mode.
+#
+# Runs the upstream ./scripts/generate-compose with COOLIFY_MODE=true, which
+# renders the docker-compose.tmpl.yml template WITHOUT any `network_mode: host`
+# (bridge networking + published ports instead). This keeps the upstream
+# templating workflow intact so future upstream template changes can be merged
+# and regenerated instead of hand-patching the generated file.
+#
+# Afterwards the generated file is validated:
+#   - no service uses network_mode
+#   - `docker compose config` parses without "mutually exclusive" errors
+#
+# Usage:
+#   ./scripts/generate-compose-coolify [--no-build]
+#
+# --no-build: additionally strip every `build:` block from the generated file so
+#   Coolify (whose compose deploy passes `--build`) pulls the prebuilt
+#   alangecker/bbb-docker-* images instead of building from ./repos submodules.
+#   Recommended for Coolify, since the submodules are not checked out there.
+set -e
+
+cd "$(dirname "$0")/.."
+
+if [ ! -f .env ]; then
+    echo "ERROR: .env not found. Copy sample.env to .env and adjust it first."
+    exit 1
+fi
+
+STRIP_BUILD=false
+if [ "$1" == "--no-build" ]; then
+    STRIP_BUILD=true
+fi
+
+# generate-compose re-sources .env internally, so COOLIFY_MODE must be IN .env
+# (an exported shell var would be clobbered by load_env).
+if ! grep -q '^COOLIFY_MODE=true' .env; then
+    if grep -q '^COOLIFY_MODE=' .env; then
+        sed -i 's/^COOLIFY_MODE=.*/COOLIFY_MODE=true/' .env
+    else
+        printf '\n# Coolify deployment mode - required\nCOOLIFY_MODE=true\n' >> .env
+    fi
+    echo "==> Set COOLIFY_MODE=true in .env"
+fi
+
+echo "==> Running upstream generate-compose"
+./scripts/generate-compose
+
+if [ "$STRIP_BUILD" == "true" ]; then
+    echo "==> Stripping build blocks (prebuilt images only)"
+    if command -v yq >/dev/null 2>&1; then
+        yq -iy '(.services | to_entries | map(.value |= (del(.build) | del(.additional_contexts))) | from_entries) as $s | .services = $s' docker-compose.yml
+    elif python3 -c 'import yaml,sys' 2>/dev/null; then
+        python3 - <<'EOF'
+import yaml
+with open('docker-compose.yml') as f:
+    data = yaml.safe_load(f)
+for svc in data.get('services', {}).values():
+    svc.pop('build', None)
+with open('docker-compose.yml', 'w') as f:
+    yaml.safe_dump(data, f, sort_keys=False)
+EOF
+    else
+        echo "WARNING: yq or python3-pyyaml not found, cannot strip build blocks."
+    fi
+fi
+
+echo "==> Validating output"
+if grep -n "network_mode" docker-compose.yml; then
+    echo "ERROR: docker-compose.yml still contains network_mode entries."
+    echo "This will conflict with Coolify's auto-injected networks."
+    exit 1
+fi
+
+if docker compose -f docker-compose.yml config >/dev/null 2>&1; then
+    echo "OK: docker compose config parses cleanly"
+else
+    echo "ERROR: docker compose config failed."
+    exit 1
+fi
+
+echo ""
+echo "Generated docker-compose.yml for Coolify deployment."
+echo "Make sure it is committed (it is gitignored upstream, so use git add -f)."
