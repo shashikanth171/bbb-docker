@@ -25,8 +25,8 @@ services:
       ENABLE_LEARNING_DASHBOARD: ${ENABLE_LEARNING_DASHBOARD:-true}
       COLLABORA_URL: ${COLLABORA_URL:-https://collabora:9980/cool}
     volumes:
-      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
-      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
+      - /home/s171/bbb-object-storage/bigbluebutton:/var/bigbluebutton
+      - /home/s171/bbb-object-storage/freeswitch-meetings:/var/freeswitch/meetings
     networks:
       bbb-net:
         ipv4_address: 10.7.7.2
@@ -52,7 +52,7 @@ services:
       ESL_PASSWORD: ${FSESL_PASSWORD:-ClueCon}
     volumes:
       - ./conf/sip_profiles:/etc/freeswitch/sip_profiles/external-dialin
-      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
+      - /home/s171/bbb-object-storage/freeswitch-meetings:/var/freeswitch/meetings
     networks:
       bbb-net:
         ipv4_address: 10.7.7.10
@@ -66,7 +66,7 @@ services:
     image: alangecker/bbb-docker-nginx:v3.0.23-v5.4.4-1.29
     restart: unless-stopped
     volumes:
-      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
+      - /home/s171/bbb-object-storage/bigbluebutton:/var/bigbluebutton
       - ${DEFAULT_PRESENTATION:-/dev/null}:/www/default.pdf
     ports:
       - 127.0.0.1:48082:48082
@@ -121,7 +121,7 @@ services:
       bbb-net:
         ipv4_address: 10.7.7.19
     volumes:
-      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
+      - /home/s171/bbb-object-storage/bigbluebutton:/var/bigbluebutton
     tmpfs:
       - /tmp
   redis:
@@ -156,7 +156,7 @@ services:
       MCS_ADDRESS: 10.7.7.11
       MS_RTP_LISTEN_IP: '{"ip":"0.0.0.0", "announcedIp":"10.7.7.11"}'
     volumes:
-      - ${BBB_DATA_DIR:-./data}/mediasoup:/var/mediasoup
+      - /home/s171/bbb-object-storage/mediasoup:/var/mediasoup
     tmpfs:
       - /var/log/bbb-webrtc-sfu
     networks:
@@ -193,7 +193,7 @@ services:
       SHARED_SECRET: ${SHARED_SECRET}
       POSTGRES_PASSWORD: ${POSTGRESQL_SECRET:-password}
     volumes:
-      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
+      - /home/s171/bbb-object-storage/freeswitch-meetings:/var/freeswitch/meetings
       - ./conf/bbb-html5.yml:/etc/bigbluebutton/bbb-html5.yml:ro
     networks:
       bbb-net:
@@ -248,8 +248,8 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
-      - ${BBB_DATA_DIR:-./data}/mediasoup:/var/mediasoup
+      - /home/s171/bbb-object-storage/bigbluebutton:/var/bigbluebutton
+      - /home/s171/bbb-object-storage/mediasoup:/var/mediasoup
     tmpfs:
       - /var/log/bigbluebutton
     environment:
@@ -269,10 +269,10 @@ services:
       DOMAIN: ${DOMAIN}
       SHARED_SECRET: ${SHARED_SECRET}
     volumes:
-      - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
-      - ${BBB_DATA_DIR:-./data}/freeswitch-meetings:/var/freeswitch/meetings
-      - ${BBB_DATA_DIR:-./data}/mediasoup:/var/mediasoup
-      - ${BBB_DATA_DIR:-./data}/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
+      - /home/s171/bbb-object-storage/bigbluebutton:/var/bigbluebutton
+      - /home/s171/bbb-object-storage/freeswitch-meetings:/var/freeswitch/meetings
+      - /home/s171/bbb-object-storage/mediasoup:/var/mediasoup
+      - /home/s171/bbb-object-storage/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
     tmpfs:
       - /var/log/bigbluebutton
       - /tmp
@@ -284,7 +284,7 @@ services:
     depends_on:
       - redis
     volumes:
-      - ${BBB_DATA_DIR:-./data}/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
+      - /home/s171/bbb-object-storage/bbb-webrtc-recorder:/var/lib/bbb-webrtc-recorder
     networks:
       bbb-net:
         ipv4_address: 10.7.7.23
