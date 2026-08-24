@@ -6,7 +6,6 @@ services:
       - redis
       - etherpad
       - bbb-pads
-      - collabora
     healthcheck:
       test: wget --no-proxy --no-verbose --tries=1 --spider http://10.7.7.2:8090/bigbluebutton/api
         || exit 1
@@ -94,7 +93,6 @@ services:
     restart: unless-stopped
     depends_on:
       - redis
-      - collabora
     environment:
       ETHERPAD_API_KEY: ${ETHERPAD_API_KEY}
       COLLABORA_URL: ${COLLABORA_URL:-https://collabora:9980/cool}
@@ -245,16 +243,6 @@ services:
     networks:
       bbb-net:
         ipv4_address: 10.7.7.32
-  collabora:
-    image: collabora/code:latest
-    restart: unless-stopped
-    tmpfs:
-      - /tmp
-    networks:
-      bbb-net:
-        ipv4_address: 10.7.7.20
-    logging:
-      driver: none
   periodic:
     image: alangecker/bbb-docker-periodic:v3.0.0
     restart: unless-stopped
