@@ -131,6 +131,13 @@ services:
     volumes:
       - ${BBB_DATA_DIR:-./data}/bigbluebutton:/var/bigbluebutton
       - ${DEFAULT_PRESENTATION:-/dev/null}:/www/default.pdf
+      {{ if isTrue .Env.COOLIFY_MODE }}
+      # Override the baked webrtc-sfu proxy target: the prebuilt nginx image
+      # points /bbb-webrtc-sfu at the host gateway (10.7.7.1), which is only
+      # correct with host networking. In Coolify/bridge mode the SFU has its own
+      # bbb-net IP, so mount the bridge-aware config over the baked one.
+      - ./mod/nginx/bbb/webrtc-sfu.nginx:/etc/nginx/bbb/webrtc-sfu.nginx:ro
+      {{ end }}
 
       {{ if isTrue .Env.DEV_MODE }}
       # overwrite html5 config 
